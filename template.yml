@@ -1,0 +1,152 @@
+# This is the SAM template that represents the architecture of your serverless application
+# https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/serverless-sam-template-basics.html
+
+# The AWSTemplateFormatVersion identifies the capabilities of the template
+# https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/format-version-structure.html
+AWSTemplateFormatVersion: 2010-09-09
+Description: >-
+  runway-cam
+
+# Transform section specifies one or more macros that AWS CloudFormation uses to process your template
+# https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/transform-section-structure.html
+Transform:
+- AWS::Serverless-2016-10-31
+
+Parameters:
+  Route53HostedZoneName:
+    Type: String
+    Description: "The domain name of the hosted zone to use for domain entries"
+  SnapshotsDomainName:
+    Type: String
+    Description: "The domain name of the runway camera snapshots to use. Must be sub the hosted zone given before"
+  SnapshotsDomainCertificateArn:
+    Type: String
+    Description: "The ACM certificate ARN that covers above's SnapshotsDomainName and will be used for the CloudFront distribution"
+  ConversionFileType:
+    Type: String
+    Default: jpg
+  ConversionMimeType:
+    Type: String
+    Default: image/jpeg
+  RtspStreamUrls:
+    Type: CommaDelimitedList
+  #ThumbWidth:
+  #  Type: Number
+  #  Default: 300
+  #  Description: Thumbnail width in pixels
+
+Resources:
+  
+  SnapshotsBucket:
+    Type: AWS::S3::Bucket
+
+  # Configure the bucket as a CloudFront Origin
+  ReadPolicy:
+    Type: 'AWS::S3::BucketPolicy'
+    Properties:
+      Bucket: !Ref SnapshotsBucket
+      PolicyDocument:
+        Statement:
+          - Action: 's3:GetObject'
+            Effect: Allow
+            Resource: !Sub 'arn:aws:s3:::${SnapshotsBucket}/*'
+            Principal:
+              CanonicalUser: !GetAtt CloudFrontOriginAccessIdentity.S3CanonicalUserId
+
+
+  ffmpeglambdalayer:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location:
+        ApplicationId: arn:aws:serverlessrepo:us-east-1:145266761615:applications/ffmpeg-lambda-layer
+        SemanticVersion: "1.0.0"
+
+  # Configure Access to CloudFront
+  CloudFrontOriginAccessIdentity:
+    Type: 'AWS::CloudFront::CloudFrontOriginAccessIdentity'
+    Properties:
+      CloudFrontOriginAccessIdentityConfig:
+        Comment: !Ref SnapshotsBucket
+
+  snapshotsDnsRecord:
+    Type: AWS::Route53::RecordSetGroup
+    Properties:
+      HostedZoneName:
+        Ref: Route53HostedZoneName
+      RecordSets:
+      - Name: !Sub '${SnapshotsDomainName}.'
+        Type: A
+        AliasTarget:
+          HostedZoneId: Z2FDTNDATAQYW2
+          DNSName: !GetAtt 'snapshotsCloudfrontDistribution.DomainName'
+
+  snapshotsCloudfrontDistribution:
+    # inspiration from https://coletiv.com/blog/how-to-use-aws-cloud-formation-to-setup-the-infrastructure-for-a-static-website/
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Aliases:
+          - !Ref SnapshotsDomainName
+        Origins:
+        - DomainName: !GetAtt SnapshotsBucket.DomainName
+          Id: s3origin
+          S3OriginConfig:
+            OriginAccessIdentity: !Sub 'origin-access-identity/cloudfront/${CloudFrontOriginAccessIdentity}'
+        Enabled: true
+        HttpVersion: http2
+        DefaultCacheBehavior:
+          AllowedMethods:
+            - GET
+            - HEAD
+            - OPTIONS
+          CachedMethods:
+            - GET
+            - HEAD
+            - OPTIONS
+          DefaultTTL: 900
+          MaxTTL: 900 # in seconds
+          MinTTL: 900 # in seconds
+          TargetOriginId: s3origin
+          ForwardedValues:
+            QueryString: 'false'
+            Cookies:
+              Forward: none
+          ViewerProtocolPolicy: allow-all
+        PriceClass: PriceClass_100
+        ViewerCertificate:
+          AcmCertificateArn: !Ref SnapshotsDomainCertificateArn
+          SslSupportMethod: sni-only
+          MinimumProtocolVersion: TLSv1.2_2018
+
+  SnapshotFileFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: function # refers to the sub directory `function`
+      Handler: handlers/snapshoot-cam-stream.handler
+      Timeout: 12
+      MemorySize: 1024
+      Runtime: nodejs10.x
+      Layers:
+        - !GetAtt ffmpeglambdalayer.Outputs.LayerVersion
+      Policies:
+      - S3CrudPolicy:
+          BucketName: !Sub "${AWS::StackName}-*"
+      Environment:
+        Variables:
+          OUTPUT_BUCKET: !Ref SnapshotsBucket
+          EXTENSION: !Ref ConversionFileType
+          MIME_TYPE: !Ref ConversionMimeType
+          INPUT_URLS_CSV: !Join 
+            - ','
+            - !Ref RtspStreamUrls
+          #THUMB_WIDTH: !Ref ThumbWidth
+      Events:
+        Regularly:
+          Type: Schedule
+          Properties:
+            Schedule: "rate(10 minutes)"  
+
+Outputs:
+    SnapshotsBucket:
+      Description: "Results S3 bucket"
+      Value: !Ref SnapshotsBucket

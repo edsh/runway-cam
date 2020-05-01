@@ -1,0 +1,13 @@
+{
+    "name": "edsh-runway-cam",
+    "description": "Allows showing the EDSH runway web cams",
+    "version": "0.0.1",
+    "private": true,
+    "dependencies": {},
+    "devDependencies": {
+        "jest": "^24.7.1"
+    },
+    "scripts": {
+        "test": "jest"
+    }
+}
