@@ -95,23 +95,13 @@ Resources:
         Enabled: true
         HttpVersion: http2
         DefaultCacheBehavior:
-          AllowedMethods:
-            - GET
-            - HEAD
-            - OPTIONS
-          CachedMethods:
-            - GET
-            - HEAD
-            - OPTIONS
-          DefaultTTL: 900
-          MaxTTL: 900 # in seconds
-          MinTTL: 900 # in seconds
+          MinTTL: 600 # in seconds
           TargetOriginId: s3origin
           ForwardedValues:
             QueryString: 'false'
             Cookies:
               Forward: none
-          ViewerProtocolPolicy: allow-all
+          ViewerProtocolPolicy: https-only
         PriceClass: PriceClass_100
         ViewerCertificate:
           AcmCertificateArn: !Ref SnapshotsDomainCertificateArn
@@ -129,8 +119,9 @@ Resources:
       Layers:
         - !GetAtt ffmpeglambdalayer.Outputs.LayerVersion
       Policies:
-      - S3CrudPolicy:
-          BucketName: !Sub "${AWS::StackName}-*"
+        - S3WritePolicy: #https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/serverless-policy-template-list.html#s3-write-policy
+            BucketName: !Sub "${AWS::StackName}-*"
+        - RekognitionDetectOnlyPolicy: {}
       Environment:
         Variables:
           OUTPUT_BUCKET: !Ref SnapshotsBucket
@@ -144,7 +135,7 @@ Resources:
         Regularly:
           Type: Schedule
           Properties:
-            Schedule: "rate(10 minutes)"  
+            Schedule: "cron(0/10 3-21 * * ? *)"
 
 Outputs:
     SnapshotsBucket:

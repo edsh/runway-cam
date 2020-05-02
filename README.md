@@ -18,19 +18,31 @@ With a fresh start a couple of weeks later when I looked at the issue again, I f
 
 ### How it works
 
-So basically the application declared in `template.yml` has a Lambda in place that is triggered by like every 15 minutes or so. This will just invoke the ffmpeg command mentioned above for two of our web cams and save the pictures in an S3 bucket.<br>
-This bucket is accessible with a CloudFront distribution so that these pictures can be served into the web.
+So basically the application declared in `template.yml` has a Lambda in place that is triggered by about every 10 minutes. This will just invoke the ffmpeg command mentioned above for two of our web cams and save the pictures in an S3 bucket.
+
+The same lambda that does that also makes use of Amazon Rekognitions' `detectFaces` functionality and blurs the respective image portions. 
+
+After storing the picture, the S3 bucket is accessible with a CloudFront distribution so that these pictures can be served into the web.
 
 ## Build/run
 
+To deploy, 
+
 ```bash
-sam deploy
+$ sam deploy
 ```
 
+To test the lambda locally,
+
+```bash
+$ sam build && sam local invoke SnapshotFileFunction --env-vars local-debug-env-vars.json 
+```
 
 ## Credits where credit is due
 
 Main credits go to [@gojko](https://github.com/gojko) for his repository mentioned above; it also contained examples that enabled me to get started on the whole AWS SAM stuff.
+
+[@veelenga](https://github.com/veelenga)'s [aws-lambda-face-blur](https://github.com/veelenga/aws-lambda-face-blur) repository got me inspired and started to blur the faces that are shot on the web cam stream. Since the webcam images are supposed to be publicy viewable on the internet I thought this was a nice idea to add for some additional privacy.
 
 Another lot of the scaffolding has been done by the `sam init` wizards; bear with me (or make a PR) if there's some leftovers I didn't clean up.
 
