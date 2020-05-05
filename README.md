@@ -24,6 +24,8 @@ The same lambda that does that also makes use of Amazon Rekognitions' `detectFac
 
 After storing the picture, the S3 bucket is accessible with a CloudFront distribution so that these pictures can be served into the web.
 
+![Architecture overview](./docs/arch-overview.svg)
+
 ## Build/run
 
 To deploy, 
