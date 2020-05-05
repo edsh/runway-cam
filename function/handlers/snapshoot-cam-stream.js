@@ -4,7 +4,7 @@ const
     path = require("path"),
     os = require("os"),
     fs = require("fs"),
-    gm = require("gm").subClass({ imageMagick: true }),
+    //gm = require("gm").subClass({ imageMagick: true }),
     moment = require("moment"),
     EXTENSION = process.env.EXTENSION,
     //THUMB_WIDTH = process.env.THUMB_WIDTH,
@@ -54,38 +54,43 @@ exports.handler = async (event, context) => {
                 )
                     .then(() => fs.promises.readFile(outputFile))
                     .then(async (outputFileBuffer) => {
-                        const rekoData =
-                            await reko.detectFaces({ // https://docs.aws.amazon.com/AWSJavaScriptSDK/latest/AWS/Rekognition.html#detectFaces-property
-                                Image: { Bytes: fs.readFileSync(outputFile) },
-                                Attributes: ["DEFAULT"]
-                            }).promise();
+                        //const rekoData =
+                        //    await reko.detectFaces({ // https://docs.aws.amazon.com/AWSJavaScriptSDK/latest/AWS/Rekognition.html#detectFaces-property
+                        //        Image: { Bytes: fs.readFileSync(outputFile) },
+                        //        Attributes: ["DEFAULT"]
+                        //    }).promise();
 
-                        if (rekoData.FaceDetails.length === 0) {
+                        //if (rekoData.FaceDetails.length === 0) {
                             return new Promise((resolve) => {
-                                resolve([outputFileBuffer, rekoData.FaceDetails]);
+                                resolve([outputFileBuffer/*, rekoData.FaceDetails*/]);
                             })
-                        }
+                        //}
 
-                        let img = gm(response.Body);
-                        img.size((err, value) => {
-                            rekoData.FaceDetails.forEach((faceDetail) => {
-                                const box = faceDetail.BoundingBox,
-                                    width = box.Width * value.width,
-                                    height = box.Height * value.height,
-                                    left = box.Left * value.width,
-                                    top = box.Top * value.height;
+                        return new Promise((resolve, reject) => {
+                            let img = gm(outputFileBuffer);
+                            img.size((err, value) => {
+                                if (err) return reject(err);
 
-                                img.region(width, height, left, top).blur(0, 50);
-                            });
+                                rekoData.FaceDetails.forEach((faceDetail) => {
+                                    const box = faceDetail.BoundingBox,
+                                        width = box.Width * value.width,
+                                        height = box.Height * value.height,
+                                        left = box.Left * value.width,
+                                        top = box.Top * value.height;
 
-                            img.toBuffer((err, buffer) => {
-                                return new Promise((resolve) => {
+                                    img.region(width, height, left, top).blur(0, 50);
+                                });
+
+                                img.toBuffer((err, buffer) => {
+                                    if (err) return reject(err);
+                                    console.log('img.toBuffer success', buffer, rekoData.FaceDetails);
                                     resolve([buffer, rekoData.FaceDetails]);
                                 });
-                            });
+                            })
                         })
+                        
                     })
-                    .then(([buffer, rekoFaceDetails]) => {
+                    .then(([buffer/*, rekoFaceDetails*/]) => {
                         return s3.upload({
                             Bucket: OUTPUT_BUCKET,
                             Key: "rwy" + i + ".jpg",
@@ -93,7 +98,7 @@ exports.handler = async (event, context) => {
                             ACL: 'private',
                             ContentType: MIME_TYPE,
                             Expires: expiry(moment.utc(), 10).toDate(),
-                            Metadata: { "x-edsh-facesdetected": rekoFaceDetails.length.toString() }
+                            //Metadata: { "x-edsh-facesdetected": rekoFaceDetails.length.toString() }
                         }).promise();
                     });
                 //.then(() => s3Util.uploadFileToS3(OUTPUT_BUCKET, "rwy"+i+".jpg", outputFile, MIME_TYPE));
